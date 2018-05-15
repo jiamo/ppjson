@@ -1,20 +1,19 @@
 from sly import Lexer, Parser
-import sys
-from copy import deepcopy
+
 
 class JsonLexer(Lexer):
-
     tokens = {
-        'LSBRACKET',
-        'RSBRACKET',
-        'LBRACE',
-        'RBRACE',
-        'COLON',
-        'STRING',
-        'CONSTANT',
-        'COMMA',
-        # 'VARIABLE',
-        # 'KEYWORDS',
+        LSBRACKET,
+        RSBRACKET,
+        LBRACE,
+        RBRACE,
+        COLON,
+        STRING,
+        SINGLE_STRING,
+        CONSTANT,
+        COMMA,
+        INT,
+        FLOAT
     }
     # WS = r'[ \t\n\r]+'
     # todo how to do it
@@ -34,12 +33,22 @@ class JsonLexer(Lexer):
         t.value = str(t.value[1:-1])
         return t
 
+    @_(r'\d+\.\d+')
+    def FLOAT(self, t):
+        t.value = float(t.value)
+        return t
+
+    @_(r'\d+')
+    def INT(self, t):
+        t.value = int(t.value)
+        return t
+
     @_(r'\n+')
     def newline(self, t):
         self.lineno += t.value.count('\n')
 
     def error(self, value):
-        print("Illegal character '%s'" % value[0])
+        print("Illegal character '%s'" % str(value))
         self.index += 1
 
 
@@ -54,6 +63,7 @@ class JsonParser(Parser):
         self.names = {}
         self.value = None
         self.json_type = None
+        self.json_value = None
 
     @_('value')
     def json_text(self, p):
@@ -64,10 +74,6 @@ class JsonParser(Parser):
     @_('')
     def empty(self, p):
         print("empty")
-
-    # @_('WS', 'empty')
-    # def ws(self, p):
-    #     print("ws")
 
     @_('object')
     def value(self, p):
@@ -84,6 +90,14 @@ class JsonParser(Parser):
         print("value-string")
         return p.STRING
 
+    @_('INT')
+    def value(self, p):
+        return p.INT
+
+    @_('FLOAT')
+    def value(self, p):
+        return p.FLOAT
+
     @_('LSBRACKET')
     def begin_array(self, p):
         print("begin_array")
@@ -96,7 +110,7 @@ class JsonParser(Parser):
     def begin_object(self, p):
         print("begin_object")
 
-    @_(' RBRACE ')
+    @_('RBRACE')
     def end_object(self, p):
         print("end_object")
 
@@ -116,14 +130,10 @@ class JsonParser(Parser):
         # This is not very good. because the value_list may not be list!
         result = []
         if isinstance(p.value_list, list):
-            result =  p.value_list
+            result = p.value_list
         else:
             result.append(p.value_list)
         return result
-
-    # @_('member')
-    # def member_list(self, p):
-    #     print("member_list-member")
 
     @_('member')
     def member_list(self, p):
@@ -167,41 +177,13 @@ class JsonParser(Parser):
             p.STRING: p.value
         }
 
-    # @_('expr "+" expr')
-    # def expr(self, p):
-    #     return p.expr0 + p.expr1
-    #
-    # @_('expr "-" expr')
-    # def expr(self, p):
-    #     return p.expr0 - p.expr1
-    #
-    # @_('expr "*" expr')
-    # def expr(self, p):
-    #     return p.expr0 * p.expr1
-    #
-    # @_('expr "/" expr')
-    # def expr(self, p):
-    #     return p.expr0 / p.expr1
-    #
-    # @_('"-" expr %prec UMINUS')
-    # def expr(self, p):
-    #     return -p.expr
-    #
-    # @_('"(" expr ")"')
-    # def expr(self, p):
-    #     return p.expr
-    #
-    # @_('NUMBER')
-    # def expr(self, p):
-    #     return p.NUMBER
-    #
-    # @_('NAME')
-    # def expr(self, p):
-    #     try:
-    #         return self.names[p.NAME]
-    #     except LookupError:
-    #         print("Undefined name '%s'" % p.NAME)
-    #         return 0
+
+def loads(s):
+    lexer = JsonLexer()
+    parser = JsonParser()
+    tokens = lexer.tokenize(s)
+    parser.parse(tokens)
+    return parser.json_value
 
 
 if __name__ == '__main__':
@@ -214,11 +196,6 @@ if __name__ == '__main__':
             break
         if text:
             tokens = lexer.tokenize(text)
-            # debug_tokens = list(tokens)
-            # for tok in debug_tokens:
-            #     print(tok)
-            #     sys.stdout.flush()
             parser.parse(tokens)
-
             print("value is {} and the python type is {}".format(
-                parser.json_value, type(parser.json_value) ))
+                parser.json_value, type(parser.json_value)))

@@ -2,26 +2,37 @@ from sly import Lexer, Parser
 import sys
 from copy import deepcopy
 
+
 class JsonLexer(Lexer):
 
     tokens = {
-        'LSBRACKET',
-        'RSBRACKET',
-        'LBRACE',
-        'RBRACE',
-        'COLON',
-        'STRING',
-        'CONSTANT',
-        'COMMA',
-        # 'VARIABLE',
-        # 'KEYWORDS',
+        LSBRACKET,
+        RSBRACKET,
+        LBRACE,
+        RBRACE,
+        COLON,
+        STRING,
+        SINGLE_STRING,
+        CONSTANT,
+        COMMA,
+        INT,
+        FLOAT,
+        LITERRAL_VALUE,
+        TRUE,
+        FALSE,
+        NULL,
     }
     # WS = r'[ \t\n\r]+'
     # todo how to do it
     # literals = { '=', '+', '-', '*', '/', '(', ')' }
-    ignore = " \t"
+    ignore = ' \t\n\r'
     # Tokens
-    # NAME = r'[a-zA-Z_][a-zA-Z0-9_]*'
+    LITERRAL_VALUE = r'[a-zA-Z_][a-zA-Z0-9_]*'
+    LITERRAL_VALUE['true'] = TRUE
+    LITERRAL_VALUE['false'] = FALSE
+    LITERRAL_VALUE['null'] = NULL
+
+
     LSBRACKET = r'\['
     RSBRACKET = r'\]'
     LBRACE = r'\{'
@@ -29,18 +40,32 @@ class JsonLexer(Lexer):
     COLON = r':'
     COMMA = r','
 
-    @_(r'"([^"\n]|(\\"))*"')
+    @_(r'"([ !#-\[\]-\U0010ffff]+|\\(["\/\\bfnrt]|u[0-9A-Fa-f]{4}))*"')
     def STRING(self, t):
         t.value = str(t.value[1:-1])
         return t
+
+    @_(r'-?(0|[1-9][0-9]*)(\.[0-9]+)?([Ee][+-]?[0-9]+)?')
+    def FLOAT(self, t):
+        t.value = float(t.value)
+        return t
+
+    @_(r'-?(0|[1-9][0-9]*)')
+    def INT(self, t):
+        t.value = int(t.value)
+        return t
+
+    # @_(r"'([^'\n]|(\\'))*'")
+    # def STRING(self, t):
+    #     t.value = str(t.value[1:-1])
+    #     return t
 
     @_(r'\n+')
     def newline(self, t):
         self.lineno += t.value.count('\n')
 
-    def error(self, value):
-        print("Illegal character '%s'" % value[0])
-        self.index += 1
+    def error(self, t):
+        raise Exception(str(t))
 
 
 class JsonParser(Parser):
@@ -54,6 +79,7 @@ class JsonParser(Parser):
         self.names = {}
         self.value = None
         self.json_type = None
+        self.json_value = None
 
     @_('value')
     def json_text(self, p):
@@ -64,10 +90,6 @@ class JsonParser(Parser):
     @_('')
     def empty(self, p):
         print("empty")
-
-    # @_('WS', 'empty')
-    # def ws(self, p):
-    #     print("ws")
 
     @_('object')
     def value(self, p):
@@ -84,6 +106,29 @@ class JsonParser(Parser):
         print("value-string")
         return p.STRING
 
+    @_('TRUE')
+    def value(self, p):
+        print("LITERRAL_VALUE", p)
+        return True
+
+    @_('FALSE')
+    def value(self, p):
+        print("LITERRAL_VALUE", p)
+        return False
+
+    @_('NULL')
+    def value(self, p):
+        print("LITERRAL_VALUE", p)
+        return None
+
+    @_('INT')
+    def value(self, p):
+        return p.INT
+
+    @_('FLOAT')
+    def value(self, p):
+        return p.FLOAT
+
     @_('LSBRACKET')
     def begin_array(self, p):
         print("begin_array")
@@ -96,46 +141,44 @@ class JsonParser(Parser):
     def begin_object(self, p):
         print("begin_object")
 
-    @_(' RBRACE ')
+    @_('RBRACE')
     def end_object(self, p):
         print("end_object")
 
-    @_('begin_object member_list end_object ')
+    @_('begin_object [ member_list ] end_object')
     def object(self, p):
-        print("object")
+        # TODO simple the process may be can just return the p.memlist
+        print("object --- is", p.member_list)
         result = {}
         if isinstance(p.member_list, list):
             for value in p.member_list:
                 result.update(value)
-        else:
+        elif p.member_list is not None:
             result = p.member_list
         return result
 
-    @_('begin_array value_list end_array')
+    @_('begin_array [ value_list ] end_array')
     def array(self, p):
         # This is not very good. because the value_list may not be list!
         result = []
         if isinstance(p.value_list, list):
-            result =  p.value_list
-        else:
+            result = p.value_list
+        elif p.value_list is not None:
             result.append(p.value_list)
         return result
 
-    # @_('member')
-    # def member_list(self, p):
-    #     print("member_list-member")
-
     @_('member')
     def member_list(self, p):
-        print("member_list-member")
+        print("member_list-member ---", p.member)
         return p.member
 
-    @_('member_list COMMA member ')
+    @_('member_list COMMA member')
     def member_list(self, p):
-        print("member_list-member")
+        print("member_list - member")
         result = []
         if isinstance(p.member_list, list):
-            result = p.member_list.append(p.member)
+            p.member_list.append(p.member)
+            result = p.member_list
         else:
             result = [p.member_list, p.member]
         return result
@@ -148,12 +191,14 @@ class JsonParser(Parser):
 
     @_('value_list COMMA value')
     def value_list(self, p):
-        print("array-list")
+
         result = []
         if isinstance(p.value_list, list):
-            result = p.array.append(p.value)
+            p.value_list.append(p.value)
+            result = p.value_list
         else:
             result = [p.value_list, p.value]
+        print("array-list", p.value_list, p.value, 'r is ', result)
         return result
 
     @_('COLON')
@@ -167,41 +212,18 @@ class JsonParser(Parser):
             p.STRING: p.value
         }
 
-    # @_('expr "+" expr')
-    # def expr(self, p):
-    #     return p.expr0 + p.expr1
-    #
-    # @_('expr "-" expr')
-    # def expr(self, p):
-    #     return p.expr0 - p.expr1
-    #
-    # @_('expr "*" expr')
-    # def expr(self, p):
-    #     return p.expr0 * p.expr1
-    #
-    # @_('expr "/" expr')
-    # def expr(self, p):
-    #     return p.expr0 / p.expr1
-    #
-    # @_('"-" expr %prec UMINUS')
-    # def expr(self, p):
-    #     return -p.expr
-    #
-    # @_('"(" expr ")"')
-    # def expr(self, p):
-    #     return p.expr
-    #
-    # @_('NUMBER')
-    # def expr(self, p):
-    #     return p.NUMBER
-    #
-    # @_('NAME')
-    # def expr(self, p):
-    #     try:
-    #         return self.names[p.NAME]
-    #     except LookupError:
-    #         print("Undefined name '%s'" % p.NAME)
-    #         return 0
+    def error(self, p):
+        raise Exception(str(p))
+
+
+def loads(s):
+
+    lexer = JsonLexer()
+    parser = JsonParser()
+    tokens = lexer.tokenize(s)
+    # print(list(tokens))
+    parser.parse(tokens)
+    return parser.json_value
 
 
 if __name__ == '__main__':

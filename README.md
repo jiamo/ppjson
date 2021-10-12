@@ -1,13 +1,16 @@
-## use sly to parse json :
+## use sly to parse json:
 1. https://tools.ietf.org/html/rfc7159
 2. https://github.com/dabeaz/sly
-3. https://github.com/counsellors/jsonparser
 
-## simple support
-1. {"1": "1", "2":"1"}
-2. ["1", "2"]
-3. ["1", {"1": "2"}]
-4. {"1": "1", "2": ["1"]}
 
-## todo
-finish all
+## usage
+The gloals is a replacement of json builtin package
+    
+    import ppjson
+    ppjson.loads
+
+
+## right? 
+https://github.com/nst/JSONTestSuite.git test graph
+
+![result](result.png?raw=true "Title")
